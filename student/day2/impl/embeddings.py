@@ -81,25 +81,31 @@ class Embeddings:
         단일 텍스트 임베딩 호출 → np.ndarray(float32) + L2 정규화
         - 예외 발생 시 상위 encode에서 재시도하도록 예외를 그대로 올려보냄
         """
-        # ----------------------------------------------------------------------------
-        # TODO[DAY2-E-02] 구현 지침
-        #  - resp = self.client.embeddings.create(model=self.model, input=text)
-        #  - vec = np.array(resp.data[0].embedding, dtype="float32")
-        #  - norm = np.linalg.norm(vec) + 1e-12; vec = vec / norm
-        #  - return vec
-        # ----------------------------------------------------------------------------
-        # raise NotImplementedError("TODO[DAY2-E-02]: 단일 임베딩 호출")
-        def _embed_once(self, text: str) -> np.ndarray:
-            # 임베딩 API 호출: 텍스트 한 줄 단위로 model을 적용
-            resp = self.client.embeddings.create(model=self.model, input=text)
-            # 한 줄씩 임베딩하므로 data[0], float32 타입으로 숫자 벡터 추출
-            vec = np.array(resp.data[0].embedding, dtype="float32")
-            # L2 정규화: 벡터 길이를 1로 만들어 거리 계산 시 영향 최소화
-            # 1e-12 추가: 0으로 나누는 것 방지
+        # 더미 모드 처리: API 키가 없거나 클라이언트가 없을 때
+        if self._use_dummy or self.client is None:
+            # 모델별 기본 차원 매핑 (text-embedding-3-small은 1536)
+            dim_map = {
+                "text-embedding-3-small": 1536,
+                "text-embedding-3-large": 3072,
+                "text-embedding-ada-002": 1536,
+            }
+            dim = dim_map.get(self.model, 1536)  # 기본값 1536
+            # 재현 가능한 더미 벡터 생성
+            vec = self._rng.randn(dim).astype("float32")
+            # L2 정규화
+            if self.normalize:
+                norm = np.linalg.norm(vec) + 1e-12
+                vec = vec / norm
+            return vec
+        
+        # 실제 API 호출
+        resp = self.client.embeddings.create(model=self.model, input=text)
+        vec = np.array(resp.data[0].embedding, dtype="float32")
+        # L2 정규화
+        if self.normalize:
             norm = np.linalg.norm(vec) + 1e-12
             vec = vec / norm
-            # 정규화된 벡터 반환
-            return vec
+        return vec
 
     def encode(self, texts: List[str]) -> np.ndarray:
         """
