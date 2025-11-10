@@ -25,7 +25,7 @@ from student.common.fs_utils import save_markdown
 # TODO[DAY2-A-01] 모델 선택
 #  - LiteLlm(model="openai/gpt-4o-mini") 등 경량 모델 지정
 # ------------------------------------------------------------------------------
-MODEL = None  # 예: MODEL = LiteLlm(model="openai/gpt-4o-mini")
+MODEL = LiteLlm(model="openai/gpt-4o-mini")  # 예: MODEL = LiteLlm(model="openai/gpt-4o-mini")
 
 
 def _handle(query: str) -> Dict[str, Any]:
@@ -41,7 +41,11 @@ def _handle(query: str) -> Dict[str, Any]:
     #  - agent = Day2Agent(index_dir=index_dir)
     #  - payload = agent.handle(query, plan); return payload
     # ----------------------------------------------------------------------------
-    raise NotImplementedError("TODO[DAY2-A-02]: Day2 본체 호출")
+    plan = Day2Plan()  # 필요 시 Day2Plan(top_k=5, ...) 형태로 조정
+    index_dir = os.getenv("DAY2_INDEX_DIR", "indices/day2")
+    agent = Day2Agent(index_dir=index_dir)
+    payload = agent.handle(query, plan)
+    return payload
 
 
 def before_model_callback(
@@ -63,7 +67,48 @@ def before_model_callback(
     #  - query = last.parts[0].text
     #  - payload → 렌더/저장/envelope → 응답
     # ----------------------------------------------------------------------------
-    raise NotImplementedError("TODO[DAY2-A-03]: Day2 before_model_callback 구현")
+    try:
+        # 1) 사용자 쿼리 추출 (최신 사용자 메시지 기준)
+        if not llm_request.contents:
+            raise ValueError("요청에 contents가 비어 있습니다.")
+        last = llm_request.contents[-1]
+        if not last.parts or not getattr(last.parts[0], "text", None):
+            raise ValueError("사용자 메시지에서 텍스트를 찾지 못했습니다.")
+        query: str = last.parts[0].text
+
+        # 2) Day2 RAG 본체 호출
+        payload = _handle(query)
+
+        # 3) 본문 렌더
+        body_md = render_day2(query, payload)
+
+        # 4) 파일 저장
+        saved = save_markdown(query, "day2", body_md)
+
+        # 5) envelope 렌더
+        md = render_enveloped("day2", query, payload, saved)
+
+        # 6) LlmResponse로 반환
+        return LlmResponse(
+            contents=[
+                types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(md)],
+                )
+            ]
+        )
+
+    except Exception as e:
+        # 예외 발생 시 간단 안내 메시지 반환
+        fallback = f"요청을 처리하는 중 오류가 발생했습니다: {e}"
+        return LlmResponse(
+            contents=[
+                types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(fallback)],
+                )
+            ]
+        )
 
 
 day2_rag_agent = Agent(
@@ -74,3 +119,4 @@ day2_rag_agent = Agent(
     tools=[],
     before_model_callback=before_model_callback,
 )
+
