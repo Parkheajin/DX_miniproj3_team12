@@ -84,27 +84,19 @@ def _handle(query: str) -> Dict[str, Any]:
 # ------------------------------------------------------------------------------
 def before_model_callback(
     callback_context: CallbackContext,
-    llm_request: LlmRequest
+    llm_request: LlmRequest,
     **kwargs,
-) -> Optional[LlmResponse]: 
+) -> Optional[LlmResponse]:
     try:
-        # 1️⃣ 최근 메시지에서 query 추출
-        query = llm_request.messages[-1].content.strip()
+        query = getattr(llm_request, "input_text", "").strip()
+        if not query:
+            query = ""
 
-        # 2️⃣ _handle(query) 실행하여 payload(dict) 생성
         payload = _handle(query)
 
-        # 3️⃣ 본문 렌더링 (Markdown 형식)
         rendered_md = render_day3(query, payload)
+        saved_path = save_markdown(query=query, route="day3", markdown=rendered_md)
 
-        # 4️⃣ 파일 저장
-        saved_path = save_markdown(
-            query=query,
-            route="day3",
-            markdown=rendered_md
-        )
-
-        # 5️⃣ envelope로 감싸기
         envelope = render_enveloped(
             kind="day3",
             query=query,
@@ -112,13 +104,20 @@ def before_model_callback(
             saved_path=saved_path
         )
 
-        # 6️⃣ 최종 응답 객체 반환
-        return LlmResponse.from_envelope(envelope)
+        content = types.Content(
+            role="model",
+            parts=[types.Part(text=envelope)]
+        )
+        return LlmResponse(content=content)
 
     except Exception as e:
-        # 예외 처리: 오류 메시지를 간단히 반환
         error_msg = f"Day3 에러 발생: {e}"
-        return LlmResponse.from_text(error_msg)
+        content = types.Content(
+            role="model",
+            parts=[types.Part(text=error_msg)]
+        )
+        return LlmResponse(content=content)
+
 
 # ------------------------------------------------------------------------------
 # TODO[DAY3-A-04] 에이전트 메타데이터:
