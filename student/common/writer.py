@@ -151,6 +151,7 @@ def render_day5(query: str, payload: dict) -> str:
     Day5 공모전 RAG 검색 결과 렌더링 (payload 기반)
     - meta.fields의 모든 컬럼을 자동 탐색하여 출력
     - 최대 10행까지만 표시
+    - '공모전명' 컬럼에 '링크'가 있을 경우 하이퍼링크로 표시
     """
     lines = []
     lines.append("# 🎯 Day5 – 공모전 추천 결과")
@@ -165,7 +166,7 @@ def render_day5(query: str, payload: dict) -> str:
     lines.append(f"- **평균 상위 K 매칭도:** {gating.get('mean_topk',0.0):.3f}")
     lines.append("")
 
-    # ── 초안 요약 (있는 경우)
+    # ── 초안 요약
     answer = (payload or {}).get("answer") or ""
     if answer:
         lines.append("## 💡 추천 요약")
@@ -173,64 +174,89 @@ def render_day5(query: str, payload: dict) -> str:
         lines.append(answer.strip())
         lines.append("")
 
-    # ── 추천 공모전 목록 (모든 컬럼 자동)
+    # ── 추천 공모전 목록
     contexts = (payload or {}).get("contexts") or []
     if contexts:
         lines.append("## 📋 추천 공모전 목록 (최대 10개)")
         lines.append("")
 
-        # 모든 컬럼 추출 (메타필드 기반)
+        # 전체 필드 탐색
         all_fields = set()
         for c in contexts:
             fields = (c.get("meta", {}) or {}).get("fields", {}) or {}
             all_fields.update(fields.keys())
         all_fields = list(all_fields)
 
-        # 기본 컬럼 우선 정렬 (보기 좋게)
-        priority = ["공모전명", "주최", "분야", "상금(단위: 만 원)", "마감일", "참가 자격", "팀 규모", "전공 우대", "상세 내용"]
+        # 보기 좋은 우선순위 정렬
+        priority = ["공모전명", "주최", "분야", "상금(단위: 만 원)", "마감일", "참가 자격", "팀 규모", "전공 우대", "상세 내용", "링크"]
         ordered_fields = [f for f in priority if f in all_fields] + [f for f in all_fields if f not in priority]
 
-        # 표 헤더 생성
+        # 표 헤더
         headers = ["순위", "매칭도"] + ordered_fields
         lines.append("| " + " | ".join(headers) + " |")
         lines.append("|" + "|".join([":---:"] * len(headers)) + "|")
 
-        # 표 내용 (최대 10개)
+        # 표 내용
         for i, c in enumerate(contexts[:10], 1):
             score = f"{float(c.get('score', 0.0))*100:.1f}%"
             fields = (c.get("meta", {}) or {}).get("fields", {}) or {}
+
+            # 하이퍼링크 처리
+            title = str(fields.get("공모전명", f"공모전 #{i}")).strip()
+            link = str(fields.get("링크", "")).strip()
+            if link:
+                title_md = f"[{title}]({link})"
+            else:
+                title_md = title
+
             row_values = []
             for key in ordered_fields:
                 val = fields.get(key, "-")
                 if isinstance(val, float) and (val != val):  # NaN 처리
                     val = "-"
                 text_val = str(val).strip().replace("\n", " ")
+
+                # 공모전명일 경우 링크 적용
+                if key == "공모전명":
+                    text_val = title_md
+
+                # 긴 텍스트는 80자 제한
                 if len(text_val) > 80:
                     text_val = text_val[:80] + "…"
                 row_values.append(text_val)
+
             lines.append(f"| {i} | {score} | " + " | ".join(row_values) + " |")
         lines.append("")
 
-    # ── 상위 3개 공모전 상세
+    # ── 상위 3개 상세
     if contexts:
         lines.append("## 📌 상위 추천 공모전 상세 (Top 3)")
         lines.append("")
         for i, c in enumerate(contexts[:3], 1):
             score = float(c.get("score", 0.0))
             fields = (c.get("meta", {}) or {}).get("fields", {}) or {}
+
             title = fields.get("공모전명", f"공모전 #{i}")
-            lines.append(f"### {i}. {title}")
+            link = str(fields.get("링크", "")).strip()
+            title_md = f"[{title}]({link})" if link else title
+
+            lines.append(f"### {i}. {title_md}")
             lines.append(f"**매칭도:** {score*100:.1f}%")
             lines.append("")
             lines.append("| 항목 | 내용 |")
             lines.append("|------|------|")
+
             for k, v in fields.items():
                 if isinstance(v, float) and (v != v):
                     v = "-"
                 text_val = str(v).strip().replace("\n", " ")
                 if len(text_val) > 200:
                     text_val = text_val[:200] + "…"
+                # 링크 필드는 Markdown 링크 유지
+                if k == "링크" and text_val:
+                    text_val = f"[{text_val}]({text_val})"
                 lines.append(f"| {k} | {text_val} |")
+
             lines.append("")
             lines.append("---")
             lines.append("")

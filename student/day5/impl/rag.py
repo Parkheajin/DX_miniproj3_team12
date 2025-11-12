@@ -36,7 +36,7 @@ def _gate(contexts: List[Dict[str, Any]], plan: Day5Plan) -> Dict[str, Any]:
 
 def _draft_answer(query: str, contexts: List[Dict[str, Any]], plan: Day5Plan) -> str:
     """
-    모든 검색결과의 공모전 메타데이터를 포함한 초안 생성
+    모든 검색결과의 공모전 메타데이터를 포함한 초안 생성 (링크 포함)
     """
     if not contexts:
         return "검색 결과가 없습니다."
@@ -63,20 +63,22 @@ def _draft_answer(query: str, contexts: List[Dict[str, Any]], plan: Day5Plan) ->
         team_size = f.get("팀 규모", "-")
         preferred_major = f.get("전공 우대", "-")
         desc = (f.get("상세 내용", "") or "").strip()
-        score = c.get("score", 0)
+        link = (f.get("링크", "") or "").strip()
 
-        # 상세 내용 일부만 (너무 길면 200자 제한)
+        # 상세 내용 일부만 (200자 제한)
         if len(desc) > 200:
             desc = desc[:200] + "…"
 
-        lines.append(
-            f"{i}. **{title}** ({field}) — {host}\n"
-            f"   🏆 **상금:** {prize}만 원 | 🗓 **마감:** {deadline}\n"
-            f"   👥 **참가 자격:** {eligibility} | 👤 **팀 규모:** {team_size}\n"
-            f"   🎓 **전공 우대:** {preferred_major}\n"
-            f"   💬 **상세 내용:** {desc}\n"
-            f"   🔹 **매칭도:** {score*100:.1f}%\n"
-        )
+        # 공모전 정보 구성
+        block = [
+            f"{i}. **{title}** ({field}) — {host}",
+            f"   🏆 **상금:** {prize}만 원 | 🗓 **마감:** {deadline}",
+            f"   👥 **참가 자격:** {eligibility} | 👤 **팀 규모:** {team_size}",
+            f"   🎓 **전공 우대:** {preferred_major}",
+            f"   💬 **상세 내용:** {desc}",
+            f"   🔗 **링크:** {link}",
+        ]
+        lines.append("\n".join(block) + "\n")
 
     # 전체 평균/TopK 정보
     top_score = float(contexts[0].get("score", 0.0))
