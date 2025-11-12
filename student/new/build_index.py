@@ -1,0 +1,97 @@
+# -*- coding: utf-8 -*-
+"""
+Day2 인덱싱 엔트리포인트
+- 목표: 코퍼스 생성 → 임베딩 → FAISS 저장 + docs.jsonl 저장
+"""
+
+import os, argparse, numpy as np
+from typing import List
+import pandas as pd
+
+# from student.day2.impl.ingest import build_corpus, save_docs_jsonl
+# from student.day2.impl.embeddings import Embeddings
+# from student.day2.impl.store import FaissStore  # 제공됨
+
+from ingest import build_corpus, save_docs_jsonl
+from embeddings import Embeddings
+from store import FaissStore  # 제공됨
+
+
+def build_index(paths: List[str], index_dir: str, model: str | None = None, batch_size: int = 128):
+    """
+    절차:
+      1) corpus = build_corpus(paths)
+         - [{"id":..., "text":..., "meta":{...}}, ...]
+      2) texts = [item["text"] for item in corpus]
+      3) emb = Embeddings(model=model, batch_size=batch_size)
+         vecs = emb.encode(texts)  # (N, D) L2 정규화된 np.ndarray
+      4) index_path = os.path.join(index_dir, "faiss.index")
+         docs_path  = os.path.join(index_dir, "docs.jsonl")
+      5) store = FaissStore(dim=vecs.shape[1], index_path=index_path, docs_path=docs_path)
+         store.add(vecs, corpus); store.save()
+      6) save_docs_jsonl(corpus, docs_path)
+    """
+    # ----------------------------------------------------------------------------
+    # TODO[DAY2-I-01] 구현 지침
+    #  - corpus = build_corpus(paths)
+    #  - texts = [...]
+    #  - emb = Embeddings(model, batch_size)
+    #  - vecs = emb.encode(texts)
+    #  - os.makedirs(index_dir, exist_ok=True)
+    #  - store = FaissStore(...); store.add(...); store.save()
+    #  - save_docs_jsonl(corpus, docs_path)
+    # ----------------------------------------------------------------------------
+    # ✅ (추가) CSV 파일 여부를 사전 점검 — CSV가 있다면 정상적으로 build_corpus에서 처리되도록 보장
+    csv_paths = [p for p in paths if p.lower().endswith(".csv")]
+    if csv_paths:
+        for csv_fp in csv_paths:
+            try:
+                # CSV를 읽을 수 있는지 테스트 (디버그/로깅용)
+                _ = pd.read_csv(csv_fp, nrows=1)
+                print(f"✅ CSV 파일 감지: {csv_fp} — 정상적으로 ingest.py에서 처리됩니다.")
+            except Exception as e:
+                print(f"⚠️ CSV 파일 읽기 실패: {csv_fp}\n   {e}")
+
+    corpus = build_corpus(paths)
+    if len(corpus) == 0:
+      raise ValueError("인덱싱할 문서가 없습니다.")
+
+    texts = [item["text"] for item in corpus]
+
+    emb = Embeddings(model=model, batch_size=batch_size)
+    vecs = emb.encode(texts)
+
+    os.makedirs(index_dir, exist_ok=True)
+    index_path = os.path.join(index_dir, "faiss.index")
+    docs_path = os.path.join(index_dir, "docs.jsonl")
+
+    store = FaissStore(dim=vecs.shape[1], index_path=index_path, docs_path=docs_path)
+    store.add(vecs, corpus)
+    store.save()
+
+    save_docs_jsonl(corpus, docs_path)
+   
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--paths", nargs="+", required=True)
+    ap.add_argument("--index_dir", default="indices/day2")
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--batch_size", type=int, default=128)
+    args = ap.parse_args()
+
+    # ----------------------------------------------------------------------------
+    # TODO[DAY2-I-02] 구현 지침
+    #  - os.makedirs(args.index_dir, exist_ok=True)
+    #  - build_index(args.paths, args.index_dir, args.model, args.batch_size)
+    # ----------------------------------------------------------------------------
+    os.makedirs(args.index_dir, exist_ok=True)
+
+    build_index(
+        paths=args.paths,
+        index_dir=args.index_dir,
+        model=args.model,
+        batch_size=args.batch_size,
+    )
+
+    print(f"✅ 인덱싱 완료! 저장 경로: {args.index_dir}")
